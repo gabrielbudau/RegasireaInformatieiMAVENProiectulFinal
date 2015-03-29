@@ -17,28 +17,30 @@ package ro.unibuc.fmi;
  * limitations under the License.
  */
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.Date;
+
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.analysis.util.WordlistLoader;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Version;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.Date;
 
 /**
  * Index all text files under a directory.
@@ -47,6 +49,8 @@ import java.util.Date;
  * it with no command-line arguments for usage information.
  */
 public class IndexFiles {
+
+	private static final String codification = "UTF-8";
 
 	private IndexFiles() {
 	}
@@ -92,7 +96,14 @@ public class IndexFiles {
 
 			Directory dir = FSDirectory.open(new File(indexPath));
 			// :Post-Release-Update-Version.LUCENE_XY:
-			Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_47);
+
+			File stopWordsFile = new File("resources/stop.txt");
+			CharArraySet stopWordsCharArraySet = WordlistLoader.getWordSet(
+					new FileReader(stopWordsFile), Version.LUCENE_47);
+			Analyzer analyzer = new MyRomanianAnalyzer(Version.LUCENE_47,
+					stopWordsCharArraySet);
+
+			// Analyzer analyzer = new RomanianAnalyzer(Version.LUCENE_47);
 			IndexWriterConfig iwc = new IndexWriterConfig(Version.LUCENE_47,
 					analyzer);
 
@@ -213,12 +224,12 @@ public class IndexFiles {
 					// Specify a Reader,
 					// so that the text of the file is tokenized and indexed,
 					// but not stored.
-					// Note that FileReader expects the file to be in UTF-8
+					// Note that FileReader expects the file to be in iso-8859-2
 					// encoding.
 					// If that's not the case searching for special characters
 					// will fail.
 					doc.add(new TextField("contents", new BufferedReader(
-							new InputStreamReader(fis, "UTF-8"))));
+							new InputStreamReader(fis, codification))));
 
 					if (writer.getConfig().getOpenMode() == OpenMode.CREATE) {
 						// New index, so we just add the document (no old
