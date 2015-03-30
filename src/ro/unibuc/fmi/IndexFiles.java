@@ -24,7 +24,13 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.util.CharArraySet;
@@ -41,6 +47,14 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Version;
+import org.codehaus.jackson.JsonFactory;
+import org.codehaus.jackson.JsonNode;
+import org.codehaus.jackson.JsonProcessingException;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.w3c.dom.CharacterData;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /**
  * Index all text files under a directory.
@@ -191,6 +205,14 @@ public class IndexFiles {
 				}
 
 				try {
+					String fileName = file.getName();
+					int index = fileName.lastIndexOf('.');
+					String extension = ""; // not null, to prevent
+											// NullPointerException in switch
+											// statement
+					if (index != -1) {
+						extension = fileName.substring(index);
+					}
 
 					// make a new, empty document
 					Document doc = new Document();
@@ -228,8 +250,18 @@ public class IndexFiles {
 					// encoding.
 					// If that's not the case searching for special characters
 					// will fail.
-					doc.add(new TextField("contents", new BufferedReader(
-							new InputStreamReader(fis, codification))));
+					switch (extension) {
+					case ".xml":
+						parseXmlFileAndAddFieldsToDoc(doc, fis);
+						break;
+					case ".json":
+						parseJSONFileAndAddFieldsToDoc(doc, fis);
+						break;
+					default: // txt and default support goes here
+						doc.add(new TextField("contents", new BufferedReader(
+								new InputStreamReader(fis, codification))));
+						break;
+					}
 
 					if (writer.getConfig().getOpenMode() == OpenMode.CREATE) {
 						// New index, so we just add the document (no old
@@ -249,6 +281,81 @@ public class IndexFiles {
 
 				} finally {
 					fis.close();
+				}
+			}
+		}
+	}
+
+	private static void parseJSONFileAndAddFieldsToDoc(Document doc,
+			FileInputStream fis) throws IOException {
+
+		BufferedReader br = new BufferedReader(new InputStreamReader(fis, codification));
+
+		StringBuilder builder = new StringBuilder();
+		int ch;
+		while ((ch = br.read()) != -1) {
+			builder.append((char) ch);
+		}
+		String str = builder.toString();
+		System.out.println(str);
+		parseJSON(str);
+	}
+
+	public static void parseJSON(String json) throws JsonProcessingException,
+			IOException {
+		JsonFactory factory = new JsonFactory();
+
+		ObjectMapper mapper = new ObjectMapper(factory);
+		JsonNode rootNode = mapper.readTree(json);
+
+		Iterator<Map.Entry<String, JsonNode>> fieldsIterator = rootNode
+				.getFields();
+		while (fieldsIterator.hasNext()) {
+
+			Map.Entry<String, JsonNode> field = fieldsIterator.next();
+			System.out.println("Key: " + field.getKey() + "\tValue:"
+					+ field.getValue());
+		}
+	}
+
+	private static void parseXmlFileAndAddFieldsToDoc(Document doc,
+			FileInputStream fis) throws IOException {
+		// parse fis. add fields to doc
+
+		try {
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			// InputSource is = new InputSource();
+			// is.setCharacterStream(new StringReader(xmlRecords));
+
+			org.w3c.dom.Document XMLDocument = db.parse(fis);
+			NodeList nodes = XMLDocument.getChildNodes();
+
+			// iterate the children
+			for (int i = 0; i < nodes.getLength(); i++) {
+				iterateChildren(doc, nodes.item(i), XMLDocument);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	private static void iterateChildren(Document doc, Node item, Node parent) {
+		if (item instanceof Element) {
+			// recurse
+			NodeList nodes = ((Element) item).getChildNodes();
+			for (int i = 0; i < nodes.getLength(); i++) {
+				iterateChildren(doc, nodes.item(i), item);
+			}
+		} else {
+			if (item instanceof CharacterData) {
+				CharacterData characterData = ((CharacterData) item);
+				String data = characterData.getData().trim();
+				String name = parent.getNodeName().trim();
+				if (!data.equals("")) {
+					// System.out.println("***" + data + "***" + name + "***");
+					doc.add(new TextField(name, new StringReader(data)));
 				}
 			}
 		}
