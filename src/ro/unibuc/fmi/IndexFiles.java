@@ -26,8 +26,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.util.Date;
-import java.util.Iterator;
-import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -47,10 +45,8 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Version;
-import org.codehaus.jackson.JsonFactory;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.JsonProcessingException;
-import org.codehaus.jackson.map.ObjectMapper;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.w3c.dom.CharacterData;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -255,7 +251,12 @@ public class IndexFiles {
 						parseXmlFileAndAddFieldsToDoc(doc, fis);
 						break;
 					case ".json":
-						parseJSONFileAndAddFieldsToDoc(doc, fis);
+						try {
+							parseJSONFileAndAddFieldsToDoc(doc, fis);
+						} catch (JSONException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
 						break;
 					default: // txt and default support goes here
 						doc.add(new TextField("contents", new BufferedReader(
@@ -287,34 +288,35 @@ public class IndexFiles {
 	}
 
 	private static void parseJSONFileAndAddFieldsToDoc(Document doc,
-			FileInputStream fis) throws IOException {
+			FileInputStream fis) throws IOException, JSONException {
 
-		BufferedReader br = new BufferedReader(new InputStreamReader(fis, codification));
+		BufferedReader br = new BufferedReader(new InputStreamReader(fis,
+				codification));
 
 		StringBuilder builder = new StringBuilder();
 		int ch;
 		while ((ch = br.read()) != -1) {
 			builder.append((char) ch);
 		}
-		String str = builder.toString();
-		System.out.println(str);
-		parseJSON(str);
+		String json = builder.toString();
+		// System.out.println(json);
+		JSONObject jObject = new JSONObject(json.trim());
+		parseJSON(doc, jObject);
 	}
 
-	public static void parseJSON(String json) throws JsonProcessingException,
-			IOException {
-		JsonFactory factory = new JsonFactory();
+	public static void parseJSON(Document doc, JSONObject jObject)
+			throws IOException, JSONException {
 
-		ObjectMapper mapper = new ObjectMapper(factory);
-		JsonNode rootNode = mapper.readTree(json);
+		for (int i = 0; i < jObject.names().length(); i++) {
+			String key = jObject.names().getString(i);
+			Object value = jObject.get(key);
+			if (value instanceof JSONObject) {
+				parseJSON(doc, (JSONObject) value);
+			} else {
+				// System.out.println("key = " + key + " value = " + value);
+				doc.add(new TextField(key, new StringReader(value.toString())));
 
-		Iterator<Map.Entry<String, JsonNode>> fieldsIterator = rootNode
-				.getFields();
-		while (fieldsIterator.hasNext()) {
-
-			Map.Entry<String, JsonNode> field = fieldsIterator.next();
-			System.out.println("Key: " + field.getKey() + "\tValue:"
-					+ field.getValue());
+			}
 		}
 	}
 
